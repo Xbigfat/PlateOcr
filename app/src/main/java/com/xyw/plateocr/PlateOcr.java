@@ -2,21 +2,22 @@ package com.xyw.plateocr;
 
 import android.app.Service;
 import android.content.ComponentName;
-import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Matrix;
 import android.graphics.PixelFormat;
+import android.graphics.Point;
+import android.graphics.Rect;
 import android.hardware.Camera;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.IBinder;
 import android.support.annotation.Nullable;
 import android.support.v7.app.AppCompatActivity;
+import android.util.DisplayMetrics;
 import android.util.Log;
-import android.view.Display;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
@@ -41,6 +42,14 @@ import java.util.List;
 
 @SuppressWarnings("ALL")
 public class PlateOcr extends AppCompatActivity {
+    //-------------------------------------------------------------------
+
+    //蒙版层的矩形区域的宽度和长度
+    private final int rectangleWidth = 300;
+    private final int rectangleHeight = 100;
+
+
+    //-------------------------------------------------------------------
     //预览view
     private SurfaceView surfaceView;
     //快门按钮
@@ -51,9 +60,11 @@ public class PlateOcr extends AppCompatActivity {
     //相机质量参数
     private List<Camera.Size> pictureSizes, previewSizes;
     //相机 预览宽度，高度，拍照宽度，高度
-    private int preW, preH, shutterW, shutterH;
+    private int preW, preH, picW, picH;
     //屏幕尺寸
-    private int screenWidth, screenHeight;
+    private int screenPxWidth, screenPxHeight;
+    //屏幕像素密度
+    private float density;
     //surfaceView 尺寸
     //待识别图片长度数据
     private int height, width;
@@ -140,8 +151,30 @@ public class PlateOcr extends AppCompatActivity {
         init();
         logCameraInfo();
         setCameraParameters();
+        setMaskRect();
     }
 
+    private void setMaskRect() {
+        //根据比例将 dp 转换成 px 设置一个矩形区域，添加到蒙版上
+        //解释一下：屏幕高度的一半，减去矩形宽度的一半
+        int x1 = screenPxWidth / 2 - dip2px(rectangleWidth) / 2;
+        int y1 = screenPxHeight / 3 - dip2px(rectangleHeight) / 2;
+        int x2 = x1 + dip2px(rectangleWidth);
+        int y2 = y1 + dip2px(rectangleHeight);
+        Rect maskRect = new Rect(x1, y1, x2, y2);
+        DrawImageView div = findViewById(R.id.drawIV);
+        div.setRect(maskRect);
+    }
+
+    /**
+     * 将 dp 转换成 px
+     *
+     * @param dipValue 需要转换的dp
+     * @return px
+     */
+    private int dip2px(float dipValue) {
+        return (int) (dipValue * density + 0.5f);
+    }
 
     private void init() {
         //设定context
@@ -151,11 +184,17 @@ public class PlateOcr extends AppCompatActivity {
         getScreenSize();
     }
 
+    /**
+     * 获取屏幕尺寸保存到成员变量中
+     * 宽、高、像素密度
+     * 单位为 像素
+     */
     private void getScreenSize() {
-        WindowManager wm = (WindowManager) getSystemService(Context.WINDOW_SERVICE);
-        Display display = wm.getDefaultDisplay();
-        screenWidth = display.getWidth();
-        screenHeight = display.getHeight();
+        DisplayMetrics dm = getResources().getDisplayMetrics();
+        screenPxWidth = dm.widthPixels;
+        screenPxHeight = dm.heightPixels;
+        density = dm.density;
+        Log.i(tag, "Screen---Width =" + screenPxWidth + "Height =" + screenPxHeight + "densityDpi =" + dm.densityDpi);
     }
 
     private void logCameraInfo() {
@@ -186,18 +225,18 @@ public class PlateOcr extends AppCompatActivity {
             n = m;
             break;
         }
-        shutterH = pictureSizes.get(n).height;
-        shutterW = pictureSizes.get(n).width;
-        parameters.setPictureSize(shutterW, shutterH);
-        Log.i(tag, "拍摄分辨为： w : " + shutterW + "h : " + shutterH);
+        picH = pictureSizes.get(n).height;
+        picW = pictureSizes.get(n).width;
+        parameters.setPictureSize(picW, picH);
+        Log.i(tag, "拍摄分辨为： w : " + picW + "h : " + picH);
         //--------------------------------------设置预览分辨率，动态接近屏幕长宽比---------------------------------------------
         int[] a = new int[previewSizes.size()];
         int[] b = new int[previewSizes.size()];
         for (int i = 0; i < previewSizes.size(); i++) {
             int supportH = previewSizes.get(i).height;
             int supportW = previewSizes.get(i).width;
-            a[i] = Math.abs(supportW - screenHeight);
-            b[i] = Math.abs(supportH - screenWidth);
+            a[i] = Math.abs(supportW - screenPxHeight);
+            b[i] = Math.abs(supportH - screenPxWidth);
             Log.d(tag, "supportW:" + supportW + "supportH:" + supportH);
         }
         int minW = 0, minA = a[0];
@@ -218,7 +257,8 @@ public class PlateOcr extends AppCompatActivity {
         preW = previewSizes.get(minW).width;
         Log.d(tag, "预览分辨率 y：" + preW + "x" + preH);
         List<Integer> list = parameters.getSupportedPreviewFrameRates();
-        parameters.setPreviewSize(previewSizes.get(minW).width, previewSizes.get(minH).height); // 设置预览图像大小
+        parameters.setPreviewSize(preW, preH);
+        //设置最大刷新率
         parameters.setPreviewFrameRate(list.get(list.size() - 1));
         setCameraDisplayOrientation();
         mCamera.setParameters(parameters);
@@ -296,11 +336,9 @@ public class PlateOcr extends AppCompatActivity {
 
         @Override
         public void onPictureTaken(byte[] data, Camera camera) {
-            //获取到屏幕长度
-            int x = screenWidth;
-            int y = screenHeight;
-            int top = (int) (x / 10 * 4);
-            int bottom = (int) (x / 10 * 8);
+            Point rectPictureSize = createCenterPictureRect(dip2px(rectangleWidth), dip2px(rectangleHeight));
+            int DST_RECT_WIDTH = rectPictureSize.x;
+            int DST_RECT_HEIGHT = rectPictureSize.y;
             //压缩到图片
             Bitmap bitmap = BitmapFactory.decodeByteArray(data, 0, data.length);
             Matrix matrix = new Matrix();
@@ -308,9 +346,10 @@ public class PlateOcr extends AppCompatActivity {
             //旋转图片
             Bitmap rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.getWidth(), bitmap.getHeight(), matrix, true);
             //压缩到预览分辨率
-            bitmap = Bitmap.createScaledBitmap(rotated, preW, preH, true);
+            int x = rotated.getWidth()/2 - DST_RECT_WIDTH/2;
+            int y = rotated.getHeight()/3 - DST_RECT_HEIGHT/2;
             //重新截取图片
-            bitmap = Bitmap.createBitmap(bitmap, 0, top, x, bottom - top);
+            bitmap = Bitmap.createBitmap(rotated, x, y, DST_RECT_WIDTH, DST_RECT_HEIGHT);
             //保存文件
             makeFile(bitmap);
             height = bitmap.getHeight();
@@ -355,6 +394,16 @@ public class PlateOcr extends AppCompatActivity {
             }
         }
 
+    }
+
+    private Point createCenterPictureRect(int w, int h) {
+
+        float wRate = (float) (picH) / (float) (screenPxWidth);
+        float hRate = (float) (picW) / (float) (screenPxHeight);
+        float rate = (wRate <= hRate) ? wRate : hRate;
+        int wRectPicture = (int) (w * wRate);
+        int hRectPicture = (int) (h * hRate);
+        return new Point(wRectPicture, hRectPicture);
     }
 
     private class Preview implements SurfaceHolder.Callback {

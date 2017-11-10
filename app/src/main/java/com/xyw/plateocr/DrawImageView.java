@@ -15,43 +15,55 @@ import android.widget.ImageView;
 
 @SuppressLint("AppCompatCustomView")
 public class DrawImageView extends ImageView {
+    private Paint mLinePaint;
+    private Paint mAreaPaint;
+    private Context mContext;
+    private int widthScreen, heightScreen;
+
     public DrawImageView(Context context, AttributeSet attrs) {
         super(context, attrs);
+        initPaint();
+        mContext = context;
+        widthScreen = context.getResources().getDisplayMetrics().widthPixels;
+        heightScreen = context.getResources().getDisplayMetrics().heightPixels;
     }
 
-    //绘画矩形
-    Paint paintRectangle = new Paint();
+    private void initPaint() {
+        //�����м�͸��������α߽��Paint
+        mLinePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        mLinePaint.setColor(Color.BLUE);
+        mLinePaint.setStyle(Paint.Style.STROKE);
+        mLinePaint.setStrokeWidth(10f);
+        mLinePaint.setAlpha(30);
 
-    {
-        paintRectangle.setAntiAlias(true);
-        paintRectangle.setColor(Color.CYAN);
-        paintRectangle.setStyle(Paint.Style.STROKE);
-        paintRectangle.setStrokeWidth(10);// 设置线宽
-        paintRectangle.setAlpha(100);
-    }
+        //����������Ӱ����
+        mAreaPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        mAreaPaint.setColor(Color.GRAY);
+        mAreaPaint.setStyle(Paint.Style.FILL);
+        mAreaPaint.setAlpha(180);
 
-    Paint mask = new Paint();
 
-    {
-        mask.setColor(Color.BLACK);
-        mask.setAlpha(100);
-        mask.setStyle(Paint.Style.FILL);
     }
 
     @Override
     protected void onDraw(Canvas canvas) {
-        // TODO Auto-generated method stub
-        super.onDraw(canvas);
-        // x 屏幕的宽度  y 屏幕的高度
-/*        int x = canvas.getWidth();
-        int y = canvas.getHeight();*/
-        int x = this.getWidth();
-        int y = this.getHeight();
-        int top = (int) (x / 10 * 4);
-        int bottom = (int) (x / 10 * 8);
-        canvas.drawRect(new Rect(0, top, x, bottom), paintRectangle);// 绘制矩形
-        canvas.drawRect(new Rect(0, 0, x, top), mask);
-        canvas.drawRect(new Rect(0, bottom, x, y), mask);
+        if (mRect == null)
+            return;
+        canvas.drawRect(0, 0, widthScreen, mRect.top, mAreaPaint);
+        canvas.drawRect(0, mRect.bottom + 1, widthScreen, heightScreen, mAreaPaint);
+        canvas.drawRect(0, mRect.top, mRect.left - 1, mRect.bottom + 1, mAreaPaint);
+        canvas.drawRect(mRect.right + 1, mRect.top, widthScreen, mRect.bottom + 1, mAreaPaint);
 
+        //����Ŀ��͸������
+        canvas.drawRect(mRect, mLinePaint);
+        super.onDraw(canvas);
+
+    }
+
+    private Rect mRect = null;
+
+    public void setRect(Rect maskRect) {
+        this.mRect = maskRect;
+        postInvalidate();
     }
 }
